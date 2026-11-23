@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: language-accelerator
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ANTHROPIC_API_KEY
+        sync: false   # Render asks you for this when you deploy
+      - key: APP_PASSWORD
+        sync: false   # Render asks you for this when you deploy

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewrite & Translate</title>
+<style>
+  :root { --bg:#f7f6f3; --card:#fff; --ink:#1d1d1f; --muted:#6b6b70; --line:#e3e1dc; --accent:#2f5d50; --accent-ink:#fff; --err:#b3261e; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#151517; --card:#1f1f22; --ink:#ececee; --muted:#9a9aa0; --line:#333338; --accent:#7fbfa9; --accent-ink:#0f1f1a; --err:#ff8a80; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Telugu",sans-serif; }
+  main { max-width:820px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:1.6rem; margin:0 0 4px; }
+  .sub { color:var(--muted); margin:0 0 24px; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tab { border:1px solid var(--line); background:var(--card); color:var(--ink); padding:8px 16px; border-radius:999px; cursor:pointer; font:inherit; }
+  .tab[aria-selected="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  label { display:block; font-weight:600; margin:0 0 6px; font-size:.9rem; }
+  textarea, select, input { width:100%; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:12px; }
+  textarea { min-height:160px; resize:vertical; }
+  .row { display:flex; gap:12px; flex-wrap:wrap; margin:14px 0; }
+  .row > div { flex:1 1 200px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; }
+  .chip { border:1px solid var(--line); background:transparent; color:var(--ink); padding:5px 12px; border-radius:999px; cursor:pointer; font:inherit; font-size:.9rem; text-transform:capitalize; }
+  .chip[aria-pressed="true"] { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .actions { display:flex; gap:10px; align-items:center; }
+  button.primary { background:var(--accent); color:var(--accent-ink); border:0; padding:11px 20px; border-radius:10px; font:inherit; font-weight:600; cursor:pointer; }
+  button.primary:disabled { opacity:.6; cursor:wait; }
+  .count { color:var(--muted); font-size:.85rem; margin-left:auto; }
+  .out { margin-top:18px; display:none; }
+  .out.show { display:block; }
+  .result { white-space:pre-wrap; background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:14px; min-height:60px; }
+  .outbar { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .link { background:none; border:0; color:var(--accent); cursor:pointer; font:inherit; font-size:.9rem; padding:0 0 0 12px; }
+  .err { color:var(--err); margin-top:12px; }
+  .hint { color:var(--muted); font-size:.85rem; margin-top:4px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Rewrite & Translate</h1>
+  <p class="sub">Rewrite English in the tone you want, or turn Telugu into natural English.</p>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-mode="rewrite">Tone rewriter</button>
+    <button class="tab" role="tab" aria-selected="false" data-mode="translate">Telugu → English</button>
+  </div>
+
+  <div class="card">
+    <label for="input" id="inputLabel">Your text</label>
+    <textarea id="input" placeholder="Paste or type the sentence you want to rewrite…"></textarea>
+    <div class="hint" id="inputHint" hidden>Telugu script or romanized Telugu both work, e.g. "nenu repu office ki late ga vastanu".</div>
+
+    <div id="toneBlock">
+      <label style="margin-top:14px">Tone</label>
+      <div class="chips" id="chips"></div>
+      <div id="customWrap">
+        <input id="customTone" placeholder="Or describe your own tone (optional), e.g. 'polite but firm'">
+      </div>
+    </div>
+
+    <div class="actions" style="margin-top:16px">
+      <button class="primary" id="go">Rewrite</button>
+      <span class="count" id="count">0 / 8000</span>
+    </div>
+    <div class="err" id="err" hidden></div>
+
+    <div class="out" id="out">
+      <div class="outbar">
+        <label style="margin:0">Result</label>
+        <span><button class="link" id="again">Try another version</button><button class="link" id="copy">Copy</button></span>
+      </div>
+      <div class="result" id="result"></div>
+    </div>
+  </div>
+</main>
+<script>
+  const $ = (id) => document.getElementById(id);
+  let mode = "rewrite";
+  let tone = "professional";
+  const tones = ["professional","direct","friendly","casual","confident","empathetic","persuasive","formal","apologetic","concise"];
+
+  function renderChips() {
+    const list = mode === "translate" ? ["natural", ...tones] : tones;
+    if (mode === "translate" && !list.includes(tone)) tone = "natural";
+    $("chips").innerHTML = "";
+    for (const t of list) {
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = t; b.type = "button";
+      b.setAttribute("aria-pressed", String(t === tone));
+      b.onclick = () => { tone = t; $("customTone").value = ""; renderChips(); };
+      $("chips").appendChild(b);
+    }
+  }
+
+  function setMode(m) {
+    mode = m;
+    document.querySelectorAll(".tab").forEach((t) => t.setAttribute("aria-selected", String(t.dataset.mode === m)));
+    const tr = m === "translate";
+    $("go").textContent = tr ? "Translate" : "Rewrite";
+    $("inputLabel").textContent = tr ? "Telugu text" : "Your text";
+    $("input").placeholder = tr ? "తెలుగులో టైప్ చేయండి, or type romanized Telugu…" : "Paste or type the sentence you want to rewrite…";
+    $("inputHint").hidden = !tr;
+    $("customWrap").hidden = tr;
+    tone = tr ? "natural" : "professional";
+    renderChips();
+    $("out").classList.remove("show"); $("err").hidden = true;
+  }
+
+  document.querySelectorAll(".tab").forEach((t) => (t.onclick = () => setMode(t.dataset.mode)));
+  $("input").addEventListener("input", () => ($("count").textContent = `${$("input").value.length} / 8000`));
+  $("customTone").addEventListener("input", () => {
+    if ($("customTone").value.trim()) document.querySelectorAll(".chip").forEach((c) => c.setAttribute("aria-pressed", "false"));
+    else renderChips();
+  });
+
+  async function run() {
+    const text = $("input").value.trim();
+    if (!text) { $("err").textContent = "Please enter some text."; $("err").hidden = false; return; }
+    $("go").disabled = true; $("again").disabled = true; $("err").hidden = true;
+    const label = $("go").textContent; $("go").textContent = "Working…";
+    try {
+      const body = mode === "rewrite"
+        ? { text, tone, customTone: $("customTone").value }
+        : { text, tone: tone === "natural" ? null : tone };
+      const r = await fetch(`/api/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Something went wrong.");
+      $("result").textContent = data.output;
+      $("out").classList.add("show");
+    } catch (e) {
+      $("err").textContent = e.message; $("err").hidden = false;
+    } finally {
+      $("go").disabled = false; $("again").disabled = false; $("go").textContent = label;
+    }
+  }
+
+  $("go").onclick = run;
+  $("again").onclick = run;
+  $("input").addEventListener("keydown", (e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") run(); });
+  $("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("result").textContent); $("copy").textContent = "Copied"; setTimeout(() => ($("copy").textContent = "Copy"), 1200); } catch {}
+  };
+  setMode("rewrite");
+</script>
+</body>
+</html>
