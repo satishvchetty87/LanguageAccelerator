@@ -1,8 +1,55 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import express from "express";
 import Anthropic from "@anthropic-ai/sdk";
 
 const app = express();
+app.set("trust proxy", 1); // behind the host's proxy (Render etc.)
+
+// --- Password protection (HTTP Basic auth) --------------------------------
+// Set APP_PASSWORD to require a password. Any username works.
+// In production the app refuses to serve anything without a password set,
+// so a missing secret can't leave it open to the internet.
+const APP_PASSWORD = process.env.APP_PASSWORD || "";
+const IS_PROD = process.env.NODE_ENV === "production";
+
+function safeEqual(a, b) {
+  const ha = crypto.createHash("sha256").update(a).digest();
+  const hb = crypto.createHash("sha256").update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+// Slow down password guessing: max 20 failed attempts per IP per 15 minutes.
+const failures = new Map();
+const WINDOW_MS = 15 * 60 * 1000;
+const MAX_FAILS = 20;
+
+app.get("/healthz", (_req, res) => res.send("ok")); // for the host's health check
+
+app.use((req, res, next) => {
+  if (!APP_PASSWORD) {
+    if (IS_PROD) return res.status(503).send("APP_PASSWORD is not set on the server.");
+    return next(); // local development without a password
+  }
+  const now = Date.now();
+  const rec = failures.get(req.ip);
+  if (rec && now - rec.start > WINDOW_MS) failures.delete(req.ip);
+  const cur = failures.get(req.ip);
+  if (cur && cur.count >= MAX_FAILS) return res.status(429).send("Too many wrong passwords. Try again in 15 minutes.");
+
+  const header = req.headers.authorization || "";
+  if (header.startsWith("Basic ")) {
+    const decoded = Buffer.from(header.slice(6), "base64").toString("utf8");
+    const password = decoded.slice(decoded.indexOf(":") + 1);
+    if (safeEqual(password, APP_PASSWORD)) return next();
+    const r = failures.get(req.ip) || { start: now, count: 0 };
+    r.count += 1;
+    failures.set(req.ip, r);
+  }
+  res.set("WWW-Authenticate", 'Basic realm="Rewrite & Translate", charset="UTF-8"');
+  res.status(401).send("Password required.");
+});
+
 app.use(express.json({ limit: "200kb" }));
 app.use(express.static("public"));
 
